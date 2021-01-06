@@ -189,8 +189,10 @@ end
 
 
 -- ############################################################################################################
+local json = require "json"
+local socket = require("lua\\ljsocket")
 
-function parseJson(json)
+local function parseJson(json)
 	local func, errMsg = loadstring("return "..jsonToLua(json))
 	if errMsg then
 		return nil, errMsg
@@ -203,9 +205,7 @@ function parseJson(json)
 	return data
 end
 
-function downloadPage(url)
-	-- Download the given page in the background, and calls the provided callback function when done:
-	-- callback(pageText, errMsg)
+local function downloadPage(url)
 	local curl = require("lcurl.safe")
 	local page = ""
 	local easy = curl.easy()
@@ -255,9 +255,26 @@ local function fetchCharacter(accountName, characterName, realmCode)
 	print("Done")
 end
 
+local function getStats()
+	local player = build.calcsTab.mainEnv.player
+	local output = player.output
+	return json.encode(output)
+end
+
+local function recalculateStats()
+	build.outputRevision = build.outputRevision + 1
+	build.buildFlag = false
+	build.calcsTab:BuildOutput()
+	build:RefreshStatList()
+end
+
+local function updateMainSkill(skillIndex)
+	build.mainSocketGroup = skillIndex
+	build.buildFlag = true
+end
+
 print("Starting server")
 
-local socket = require("lua\\ljsocket")
 local host = "localhost"
 local port = 13678
 
@@ -280,7 +297,6 @@ while true do
 	local client, err = server:accept()
 
 	if client then
-		assert(client:send(content))
 		print("client connected ", client)
 		local str, err = client:receive()
 		if str then
@@ -290,6 +306,11 @@ while true do
 				print("[Received]" .. parsedMessage.payload.name .. " " .. parsedMessage.payload.rarity)
 			elseif parsedMessage.type == "FetchCharacter" then
 				fetchCharacter(parsedMessage.payload.accountName, parsedMessage.payload.characterName, "pc")
+			elseif parsedMessage.type == "GetStats" then
+				fetchCharacter(parsedMessage.payload.accountName, parsedMessage.payload.characterName, "pc")
+				updateMainSkill(parsedMessage.payload.skillIndex)
+				recalculateStats()
+				client:send(getStats())
 			elseif parsedMessage.type == "Exit" then
 				break
 			else
